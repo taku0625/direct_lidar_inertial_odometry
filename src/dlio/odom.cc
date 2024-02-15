@@ -360,6 +360,8 @@ void dlio::OdomNode::publishToROS(pcl::PointCloud<PointType>::ConstPtr published
 
   // nav_msgs::Path
   this->path_ros.header.stamp = this->imu_stamp;
+  this->path_ros.header.stamp.sec = this->scan_header_stamp.sec;
+  this->path_ros.header.stamp.nsec = this->scan_header_stamp.nsec;
   this->path_ros.header.frame_id = this->odom_frame;
 
   geometry_msgs::PoseStamped p;
@@ -381,6 +383,8 @@ void dlio::OdomNode::publishToROS(pcl::PointCloud<PointType>::ConstPtr published
   geometry_msgs::TransformStamped transformStamped;
 
   transformStamped.header.stamp = this->imu_stamp;
+  transformStamped.header.stamp.sec = this->scan_header_stamp.sec;
+  transformStamped.header.stamp.nsec = this->scan_header_stamp.nsec;
   transformStamped.header.frame_id = this->odom_frame;
   transformStamped.child_frame_id = this->baselink_frame;
 
@@ -397,6 +401,8 @@ void dlio::OdomNode::publishToROS(pcl::PointCloud<PointType>::ConstPtr published
 
   // transform: baselink to imu
   transformStamped.header.stamp = this->imu_stamp;
+  transformStamped.header.stamp.sec = this->scan_header_stamp.sec;
+  transformStamped.header.stamp.nsec = this->scan_header_stamp.nsec;
   transformStamped.header.frame_id = this->baselink_frame;
   transformStamped.child_frame_id = this->imu_frame;
 
@@ -414,6 +420,8 @@ void dlio::OdomNode::publishToROS(pcl::PointCloud<PointType>::ConstPtr published
 
   // transform: baselink to lidar
   transformStamped.header.stamp = this->imu_stamp;
+  transformStamped.header.stamp.sec = this->scan_header_stamp.sec;
+  transformStamped.header.stamp.nsec = this->scan_header_stamp.nsec;
   transformStamped.header.frame_id = this->baselink_frame;
   transformStamped.child_frame_id = this->lidar_frame;
 
