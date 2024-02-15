@@ -12,17 +12,17 @@
 
 #include "dlio/odom.h"
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv)
+{
 
-  ros::init(argc, argv, "dlio_odom_node");
-  ros::NodeHandle nh("~");
+	ros::init(argc, argv, "dlio_odom_node");
+	ros::NodeHandle nh("~");
 
-  dlio::OdomNode node(nh);
-  ros::AsyncSpinner spinner(0);
-  spinner.start();
-  node.start();
-  ros::waitForShutdown();
+	dlio::OdomNode node(nh);
+	ros::AsyncSpinner spinner(0);
+	spinner.start();
+	node.start();
+	ros::waitForShutdown();
 
-  return 0;
-
+	return 0;
 }

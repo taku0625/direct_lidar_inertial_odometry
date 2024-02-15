@@ -12,39 +12,37 @@
 
 #include "dlio/dlio.h"
 
-class dlio::MapNode {
+class dlio::MapNode
+{
 
 public:
+	MapNode(ros::NodeHandle node_handle);
+	~MapNode();
 
-  MapNode(ros::NodeHandle node_handle);
-  ~MapNode();
-
-  void start();
+	void start();
 
 private:
+	void getParams();
 
-  void getParams();
+	void publishTimer(const ros::TimerEvent &e);
+	void callbackKeyframe(const sensor_msgs::PointCloud2ConstPtr &keyframe);
 
-  void publishTimer(const ros::TimerEvent& e);
-  void callbackKeyframe(const sensor_msgs::PointCloud2ConstPtr& keyframe);
+	bool savePcd(direct_lidar_inertial_odometry::save_pcd::Request &req,
+				 direct_lidar_inertial_odometry::save_pcd::Response &res);
 
-  bool savePcd(direct_lidar_inertial_odometry::save_pcd::Request& req,
-               direct_lidar_inertial_odometry::save_pcd::Response& res);
+	ros::NodeHandle nh;
+	ros::Timer publish_timer;
 
-  ros::NodeHandle nh;
-  ros::Timer publish_timer;
+	ros::Subscriber keyframe_sub;
+	ros::Publisher map_pub;
 
-  ros::Subscriber keyframe_sub;
-  ros::Publisher map_pub;
+	ros::ServiceServer save_pcd_srv;
 
-  ros::ServiceServer save_pcd_srv;
+	pcl::PointCloud<PointType>::Ptr dlio_map;
+	pcl::VoxelGrid<PointType> voxelgrid;
 
-  pcl::PointCloud<PointType>::Ptr dlio_map;
-  pcl::VoxelGrid<PointType> voxelgrid;
+	std::string odom_frame;
 
-  std::string odom_frame;
-
-  double publish_freq_;
-  double leaf_size_;
-
+	double publish_freq_;
+	double leaf_size_;
 };
