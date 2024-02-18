@@ -353,16 +353,14 @@ private:
 	double geo_gbias_max_;
 
 	// // iterative dlio!
+	State iterative_init_state;
 	State iterative_prev_state;
-	State iterative_state;
-	Pose iterative_prev_lidarPose;
-	Pose iterative_lidarPose;
+	Pose iterative_init_lidarPose;
+	State iterative_dstate;
 	ImuBias iterative_dbias;
-	bool iterative_dlio = false;
+	bool initial_iterate = false;
 	bool final_iterate = false;
 	int iteratie_num = 1;
-	Eigen::Vector3f iterative_geo_prev_p;
-	Eigen::Quaternionf iterative_geo_prev_q;
 	Eigen::Vector3f iterative_geo_prev_vel;
 
 	std::vector<double> timestamps;

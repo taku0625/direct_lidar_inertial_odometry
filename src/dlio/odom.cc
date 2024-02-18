@@ -635,7 +635,7 @@ void dlio::OdomNode::deskewPointcloud()
 {
 	pcl::PointCloud<PointType>::Ptr p(boost::make_shared<pcl::PointCloud<PointType>>());
 
-	if (!this->iterative_dlio)
+	if (true)
 	{
 		this->deskewed_scan_.reset(new pcl::PointCloud<PointType>());
 		this->timestamps.clear();
@@ -725,7 +725,7 @@ void dlio::OdomNode::deskewPointcloud()
 
 	// IMU prior & deskewing for second scan onwards
 	std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> frames;
-	frames = this->integrateImu(this->prev_scan_stamp, this->iterative_prev_lidarPose.q, this->iterative_prev_lidarPose.p,
+	frames = this->integrateImu(this->prev_scan_stamp, this->iterative_init_lidarPose.q, this->iterative_init_lidarPose.p,
 								this->iterative_geo_prev_vel.cast<float>(), this->timestamps);
 	// frames = this->integrateImu(this->prev_scan_stamp, this->lidarPose.q, this->lidarPose.p,
 	// 							this->geo.prev_vel.cast<float>(), this->timestamps);
@@ -823,12 +823,10 @@ void dlio::OdomNode::callbackPointCloud(const sensor_msgs::PointCloud2ConstPtr &
 	// Convert incoming scan into DLIO format
 	this->getScanFromROS(pc);
 
-	this->iterative_prev_state = this->state;
-	this->iterative_prev_lidarPose = this->lidarPose;
-	this->iterative_geo_prev_p = this->geo.prev_p;
-	this->iterative_geo_prev_q = this->geo.prev_q;
+	this->iterative_init_state = this->state;
+	this->iterative_init_lidarPose = this->lidarPose;
 	this->iterative_geo_prev_vel = this->geo.prev_vel;
-	this->iterative_dlio = false;
+	// this->initial_iterate = true;
 
 	// Preprocess points
 	this->preprocessPoints();
@@ -872,7 +870,7 @@ void dlio::OdomNode::callbackPointCloud(const sensor_msgs::PointCloud2ConstPtr &
 	this->getNextPose();
 
 	// iterative dlio!
-	this->iterative_dlio = false;
+	// this->initial_iterate = false;
 	for (int i = 0; i < this->iteratie_num; i++)
 	{
 		// Preprocess points
@@ -1099,23 +1097,25 @@ void dlio::OdomNode::callbackImu(const sensor_msgs::Imu::ConstPtr &imu_raw)
 
 void dlio::OdomNode::getNextPose()
 {
-
-	// Check if the new submap is ready to be used
-	this->new_submap_is_ready = (this->submap_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready);
-
-	if (this->new_submap_is_ready && this->submap_hasChanged)
+	if (this->final_iterate)
 	{
+		// Check if the new submap is ready to be used
+		this->new_submap_is_ready = (this->submap_future.wait_for(std::chrono::seconds(0)) == std::future_status::ready);
 
-		// Set the current global submap as the target cloud
-		this->gicp.registerInputTarget(this->submap_cloud);
+		if (this->new_submap_is_ready && this->submap_hasChanged)
+		{
 
-		// Set submap kdtree
-		this->gicp.target_kdtree_ = this->submap_kdtree;
+			// Set the current global submap as the target cloud
+			this->gicp.registerInputTarget(this->submap_cloud);
 
-		// Set target cloud's normals as submap normals
-		this->gicp.setTargetCovariances(this->submap_normals);
+			// Set submap kdtree
+			this->gicp.target_kdtree_ = this->submap_kdtree;
 
-		this->submap_hasChanged = false;
+			// Set target cloud's normals as submap normals
+			this->gicp.setTargetCovariances(this->submap_normals);
+
+			this->submap_hasChanged = false;
+		}
 	}
 
 	// Align with current submap with global IMU transformation as initial guess
@@ -1425,6 +1425,7 @@ void dlio::OdomNode::updateState()
 
 	Eigen::Quaternionf qe, qhat, qcorr;
 	qhat = this->state.q;
+	// qhat = this->iterative_init_state.q;
 
 	// Constuct error quaternion
 	qe = qhat.conjugate() * qin;
@@ -1441,6 +1442,7 @@ void dlio::OdomNode::updateState()
 	qcorr = qhat * qcorr;
 
 	Eigen::Vector3f err = pin - this->state.p;
+	// Eigen::Vector3f err = pin - this->iterative_init_state.p;
 	Eigen::Vector3f err_body;
 
 	err_body = qhat.conjugate()._transformVector(err);
@@ -1449,7 +1451,55 @@ void dlio::OdomNode::updateState()
 	double gbias_max = this->geo_gbias_max_;
 
 	ImuBias bias;
-	if (this->final_iterate)
+	// if (this->final_iterate)
+	// // if (true)
+	// {
+	// 	this->state.b.accel -= this->iterative_dstate.b.accel;
+	// 	this->state.b.gyro -= this->iterative_dstate.b.gyro;
+	// 	this->state.p -= this->iterative_dstate.p;
+	// 	this->state.v.lin.w -= this->iterative_dstate.v.lin.w;
+	// 	this->state.q = this->state.q * this->iterative_prev_state.q.inverse() * this->iterative_dstate.q.inverse() * this->iterative_prev_state.q;
+	// }
+
+	// this->iterative_prev_state = this->state;
+
+	// // Update accel bias
+	// this->state.b.accel -= dt * this->geo_Kab_ * err_body;
+	// this->state.b.accel = this->state.b.accel.array().min(abias_max).max(-abias_max);
+
+	// // Update gyro bias
+	// this->state.b.gyro[0] -= dt * this->geo_Kgb_ * qe.w() * qe.x();
+	// this->state.b.gyro[1] -= dt * this->geo_Kgb_ * qe.w() * qe.y();
+	// this->state.b.gyro[2] -= dt * this->geo_Kgb_ * qe.w() * qe.z();
+	// this->state.b.gyro = this->state.b.gyro.array().min(gbias_max).max(-gbias_max);
+
+	// // Update state
+	// this->state.p += dt * this->geo_Kp_ * err;
+	// this->state.v.lin.w += dt * this->geo_Kv_ * err;
+
+	// this->state.q.w() += dt * this->geo_Kq_ * qcorr.w();
+	// this->state.q.x() += dt * this->geo_Kq_ * qcorr.x();
+	// this->state.q.y() += dt * this->geo_Kq_ * qcorr.y();
+	// this->state.q.z() += dt * this->geo_Kq_ * qcorr.z();
+	// this->state.q.normalize();
+
+	// // store previous pose, orientation, and velocity
+	// this->geo.prev_p = this->state.p;
+	// this->geo.prev_q = this->state.q;
+	// this->geo.prev_vel = this->state.v.lin.w;
+
+	// bias = this->state.b;
+
+	// if (!this->final_iterate)
+	// {
+	// 	this->iterative_dstate.b.accel = this->state.b.accel - this->iterative_prev_state.b.accel;
+	// 	this->iterative_dstate.b.gyro = this->state.b.gyro - this->iterative_prev_state.b.gyro;
+	// 	this->iterative_dstate.p = this->state.p - this->iterative_prev_state.p;
+	// 	this->iterative_dstate.v.lin.w = this->state.v.lin.w - this->iterative_prev_state.v.lin.w;
+	// 	this->iterative_dstate.q = this->state.q * this->iterative_prev_state.q.inverse();
+	// }
+
+	// if (this->final_iterate)
 	if (true)
 	{
 		// Update accel bias
@@ -1492,8 +1542,8 @@ void dlio::OdomNode::updateState()
 		bias.gyro = bias.gyro.array().min(gbias_max).max(-gbias_max);
 	}
 
-	this->iterative_dbias.accel = (bias.accel - this->iterative_prev_state.b.accel) / dt;
-	this->iterative_dbias.gyro = (bias.gyro - this->iterative_prev_state.b.gyro) / dt;
+	this->iterative_dbias.accel = (bias.accel - this->iterative_init_state.b.accel) / dt;
+	this->iterative_dbias.gyro = (bias.gyro - this->iterative_init_state.b.gyro) / dt;
 }
 
 sensor_msgs::Imu::Ptr dlio::OdomNode::transformImu(const sensor_msgs::Imu::ConstPtr &imu_raw)
