@@ -16,9 +16,11 @@
   <arg name="rviz" default="false"/>
 
   <!-- <arg name="pointcloud_topic" default="lidar"/> -->
-  <arg name="pointcloud_topic" default="/os1_cloud_node/points"/>
+  <!-- <arg name="pointcloud_topic" default="/os1_cloud_node/points"/> -->
+  <arg name="pointcloud_topic" default="/velodyne_points"/>
   <!-- <arg name="imu_topic" default="imu"/> -->
-  <arg name="imu_topic" default="/os1_cloud_node/imu"/>
+  <!-- <arg name="imu_topic" default="/os1_cloud_node/imu"/> -->
+  <arg name="imu_topic" default="/imu/data"/>
 
   <!-- <arg name="rosbag_path"
   default="/home/takumiti/dataset/rosbag/newer_college/rooster_2020-03-10-10-36-30_0.bag" /> -->

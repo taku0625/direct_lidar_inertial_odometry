@@ -77,7 +77,9 @@ dlio::OdomNode::OdomNode(ros::NodeHandle node_handle) : nh(node_handle)
 	this->original_scan = pcl::PointCloud<PointType>::ConstPtr(boost::make_shared<const pcl::PointCloud<PointType>>());
 	this->deskewed_scan = pcl::PointCloud<PointType>::ConstPtr(boost::make_shared<const pcl::PointCloud<PointType>>());
 	this->current_scan = pcl::PointCloud<PointType>::ConstPtr(boost::make_shared<const pcl::PointCloud<PointType>>());
+	this->source_scan = pcl::PointCloud<PointType>::ConstPtr(boost::make_shared<const pcl::PointCloud<PointType>>());
 	this->submap_cloud = pcl::PointCloud<PointType>::ConstPtr(boost::make_shared<const pcl::PointCloud<PointType>>());
+	this->source_covlist = std::make_shared<const nano_gicp::CovarianceList>();
 
 	this->num_processed_keyframes = 0;
 
@@ -575,60 +577,72 @@ void dlio::OdomNode::preprocessPoints()
 			return;
 		}
 	}
-	// else
-	// {
-
-	// 	this->scan_stamp = this->scan_header_stamp.toSec();
-
-	// 	// don't process scans until IMU data is present
-	// 	if (!this->first_valid_scan)
-	// 	{
-
-	// 		if (this->imu_buffer.empty() || this->scan_stamp <= this->imu_buffer.back().stamp)
-	// 		{
-	// 			return;
-	// 		}
-
-	// 		this->first_valid_scan = true;
-	// 		this->T_prior = this->T; // assume no motion for the first scan
-	// 	}
-	// 	else
-	// 	{
-
-	// 		// IMU prior for second scan onwards
-	// 		std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> frames;
-	// 		frames = this->integrateImu(this->prev_scan_stamp, this->lidarPose.q, this->lidarPose.p,
-	// 									this->geo.prev_vel.cast<float>(), {this->scan_stamp});
-
-	// 		if (frames.size() > 0)
-	// 		{
-	// 			this->T_prior = frames.back();
-	// 		}
-	// 		else
-	// 		{
-	// 			this->T_prior = this->T;
-	// 		}
-	// 	}
-
-	// 	pcl::PointCloud<PointType>::Ptr deskewed_scan_(boost::make_shared<pcl::PointCloud<PointType>>());
-	// 	pcl::transformPointCloud(*this->original_scan, *deskewed_scan_,
-	// 							 this->T_prior * this->extrinsics.baselink2lidar_T);
-	// 	this->deskewed_scan = deskewed_scan_;
-	// 	this->deskew_status = false;
-	// }
-
-	// Voxel Grid Filter
-	if (this->vf_use_)
-	{
-		pcl::PointCloud<PointType>::Ptr current_scan_(boost::make_shared<pcl::PointCloud<PointType>>(*this->deskewed_scan));
-		this->voxel.setInputCloud(current_scan_);
-		this->voxel.filter(*current_scan_);
-		this->current_scan = current_scan_;
-	}
 	else
 	{
-		this->current_scan = this->deskewed_scan;
+
+		this->scan_stamp = this->scan_header_stamp.toSec();
+
+		// don't process scans until IMU data is present
+		if (!this->first_valid_scan)
+		{
+
+			if (this->imu_buffer.empty() || this->scan_stamp <= this->imu_buffer.back().stamp)
+			{
+				return;
+			}
+
+			this->first_valid_scan = true;
+			this->T_prior = this->T; // assume no motion for the first scan
+		}
+		else
+		{
+
+			// IMU prior for second scan onwards
+			std::vector<Eigen::Matrix4f, Eigen::aligned_allocator<Eigen::Matrix4f>> frames;
+			frames = this->integrateImu(this->prev_scan_stamp, this->lidarPose.q, this->lidarPose.p,
+										this->geo.prev_vel.cast<float>(), {this->scan_stamp});
+
+			if (frames.size() > 0)
+			{
+				this->T_prior = frames.back();
+			}
+			else
+			{
+				this->T_prior = this->T;
+			}
+		}
+
+		pcl::PointCloud<PointType>::Ptr deskewed_scan_(boost::make_shared<pcl::PointCloud<PointType>>());
+		pcl::transformPointCloud(*this->original_scan, *deskewed_scan_,
+								 this->T_prior * this->extrinsics.baselink2lidar_T);
+		this->deskewed_scan = deskewed_scan_;
+		this->deskew_status = false;
 	}
+
+	// Voxel Grid Filter
+	// if (this->vf_use_)
+	// {
+	// 	pcl::PointCloud<PointType>::Ptr current_scan_(boost::make_shared<pcl::PointCloud<PointType>>(*this->deskewed_scan));
+	// 	this->voxel.setInputCloud(current_scan_);
+	// 	this->voxel.filter(*current_scan_);
+	// 	this->current_scan = current_scan_;
+	// }
+	// else
+	// {
+	// 	this->current_scan = this->deskewed_scan;
+	// }
+
+	pcl::PointCloud<PointType>::Ptr current_scan_(boost::make_shared<pcl::PointCloud<PointType>>(*this->deskewed_scan));
+	this->voxel.setInputCloud(current_scan_);
+	this->voxel.filter(*current_scan_);
+	this->current_scan = current_scan_;
+
+	pcl::PointCloud<PointType>::Ptr source_scan_(boost::make_shared<pcl::PointCloud<PointType>>());
+	std::shared_ptr<nano_gicp::CovarianceList> source_covlist_(std::make_shared<nano_gicp::CovarianceList>());
+	this->filter(current_scan_, source_scan_, source_covlist_);
+
+	this->source_scan = source_scan_;
+	this->source_covlist = source_covlist_;
 }
 
 void dlio::OdomNode::deskewPointcloud()
@@ -782,8 +796,16 @@ void dlio::OdomNode::initializeInputTarget()
 
 void dlio::OdomNode::setInputSource()
 {
-	this->gicp.setInputSource(this->current_scan);
-	this->gicp.calculateSourceCovariances();
+	if (this->keyframes.size() == 0)
+	{
+		this->gicp.setInputSource(this->current_scan);
+		this->gicp.calculateSourceCovariances();
+	}
+	else
+	{
+		this->gicp.setInputSource(this->source_scan);
+		this->gicp.setSourceCovariances(this->source_covlist);
+	}
 }
 
 void dlio::OdomNode::initializeDLIO()
@@ -1817,6 +1839,8 @@ void dlio::OdomNode::updateKeyframes()
 		std::unique_lock<decltype(this->keyframes_mutex)> lock(this->keyframes_mutex);
 		this->keyframes.push_back(std::make_pair(std::make_pair(this->lidarPose.p, this->lidarPose.q), this->current_scan));
 		this->keyframe_timestamps.push_back(this->scan_header_stamp);
+		this->gicp.setInputSource(this->current_scan);
+		this->gicp.calculateSourceCovariances();
 		this->keyframe_normals.push_back(this->gicp.getSourceCovariances());
 		this->keyframe_transformations.push_back(this->T_corr);
 		lock.unlock();
@@ -2245,4 +2269,193 @@ void dlio::OdomNode::debug()
 			  << "|" << std::endl;
 
 	std::cout << "+-------------------------------------------------------------------+" << std::endl;
+}
+
+
+void dlio::OdomNode::filter(const pcl::PointCloud<PointType>::ConstPtr &input_cloud,
+						  pcl::PointCloud<PointType>::Ptr &output_cloud,
+                          std::shared_ptr<nano_gicp::CovarianceList> &output_covs)
+{
+    auto input_filtered_cloud_1 = pcl::make_shared<pcl::PointCloud<PointType>>();
+    auto input_filtered_cloud_2 = pcl::make_shared<pcl::PointCloud<PointType>>();
+    auto covs_1 = std::make_shared<nano_gicp::CovarianceList>();
+    auto covs_2 = std::make_shared<nano_gicp::CovarianceList>();
+
+	*input_filtered_cloud_1 = *input_cloud;
+    calculateCovs(input_filtered_cloud_1, covs_1);
+
+    // filterOnce(input_filtered_cloud_1, output_cloud, covs_1, output_covs, 1);
+
+    while (true)
+    {
+        filterOnce(input_filtered_cloud_1, input_filtered_cloud_2, covs_1, covs_2);
+
+        if (input_filtered_cloud_1->size() == input_filtered_cloud_2->size())
+        {
+            // filterOnce(input_filtered_cloud_2, input_filtered_cloud_1, covs_2, covs_1);
+            filterOnce(input_filtered_cloud_2, input_filtered_cloud_1, covs_2, covs_1, 1);
+
+            output_cloud = input_filtered_cloud_1;
+
+            output_covs->resize(covs_1->size());
+#pragma omp parallel for num_threads(this->num_threads_) schedule(guided, 8)
+            for (int i = 0; i < covs_1->size(); ++i)
+            {
+                output_covs->at(i) = regularizateCov(covs_1->at(i));
+            }
+
+            return;
+        }
+
+        filterOnce(input_filtered_cloud_2, input_filtered_cloud_1, covs_2, covs_1);
+
+        if (input_filtered_cloud_1->size() == input_filtered_cloud_2->size())
+        {
+            // filterOnce(input_filtered_cloud_1, input_filtered_cloud_2, covs_1, covs_2);
+            filterOnce(input_filtered_cloud_1, input_filtered_cloud_2, covs_1, covs_2, 1);
+
+            output_cloud = input_filtered_cloud_2;
+
+            output_covs->resize(covs_2->size());
+#pragma omp parallel for num_threads(this->num_threads_) schedule(guided, 8)
+            for (int i = 0; i < covs_2->size(); ++i)
+            {
+                output_covs->at(i) = regularizateCov(covs_2->at(i));
+            }
+
+            return;
+        }
+    }
+}
+
+void dlio::OdomNode::calculateCovs(const pcl::PointCloud<PointType>::Ptr &input_cloud,
+                                 std::shared_ptr<nano_gicp::CovarianceList> &output_covs,
+                                 const int search_mode)
+{
+    output_covs.reset(new nano_gicp::CovarianceList(input_cloud->size()));
+    kdtree_.setInputCloud(input_cloud);
+
+#pragma omp parallel for num_threads(this->num_threads_) schedule(guided, 8)
+    for (int i = 0; i < input_cloud->size(); ++i)
+    {
+        output_covs->at(i) = calculateCov(input_cloud->at(i), search_mode);
+    }
+}
+
+Eigen::Matrix4d dlio::OdomNode::calculateCov(const PointType &point, const int search_mode)
+{
+    std::vector<int> k_indices;
+    std::vector<float> k_sq_distances;
+    if (search_mode == 0)
+    {
+        kdtree_.nearestKSearch(point, COV_POINTS_NUM_, k_indices, k_sq_distances);
+    }
+    else
+    {
+        // kdtree_.radiusSearch(point, COV_POINTS_RADIUS_, k_indices, k_sq_distances);
+    }
+
+    int num_neighbors = k_indices.size();
+
+    if (num_neighbors < COV_POINTS_NUM_ || k_sq_distances.back() > MIN_DIST_BETWEEN_POINTS_ || k_sq_distances[1] > 0.2)
+    {
+        return Eigen::Matrix4d::Zero();
+    }
+
+    Eigen::Matrix<double, 4, -1> neighbors(4, num_neighbors);
+    for (int j = 0; j < num_neighbors; ++j)
+    {
+        neighbors.col(j) = kdtree_.getInputCloud()->at(k_indices[j]).getVector4fMap().template cast<double>();
+    }
+
+    neighbors.colwise() -= neighbors.rowwise().mean().eval();
+    Eigen::Matrix4d cov = neighbors * neighbors.transpose() / num_neighbors;
+
+    return cov;
+}
+
+void dlio::OdomNode::filterOnce(const pcl::PointCloud<PointType>::Ptr &input_cloud,
+                              pcl::PointCloud<PointType>::Ptr &output_cloud,
+                              const std::shared_ptr<nano_gicp::CovarianceList> &input_covs,
+                              std::shared_ptr<nano_gicp::CovarianceList> &output_covs,
+                              const int search_mode)
+{
+    output_cloud.reset(new pcl::PointCloud<PointType>());
+    output_covs.reset(new nano_gicp::CovarianceList());
+    output_cloud->points.reserve(input_cloud->size());
+    output_covs->reserve(input_covs->size());
+
+    kdtree_.setInputCloud(input_cloud);
+
+    std::vector<bool> valid_point_flags(input_cloud->size());
+    auto tmp_output_covs = std::make_shared<nano_gicp::CovarianceList>(input_covs->size());
+
+#pragma omp parallel for num_threads(this->num_threads_) schedule(guided, 8)
+    for (int i = 0; i < input_cloud->size(); ++i)
+    {
+        Eigen::Matrix4d cov = calculateCov(input_cloud->at(i), search_mode);
+        tmp_output_covs->at(i) = cov;
+
+        if (!isValidPoint(cov.block<3, 3>(0, 0), search_mode))
+        {
+            valid_point_flags[i] = false;
+        }
+        else
+        {
+            valid_point_flags[i] = true;
+        }
+    }
+
+    // output_cloudとoutput_covsで並びの同期をはかるため
+    for (int i = 0; i < valid_point_flags.size(); ++i)
+    {
+        if (valid_point_flags[i])
+        {
+            output_cloud->push_back(input_cloud->at(i));
+            // output_covs->push_back(tmp_output_covs->at(i));
+            output_covs->push_back(input_covs->at(i));
+        }
+    }
+
+    output_cloud->points.shrink_to_fit();
+    output_covs->shrink_to_fit();
+}
+
+Eigen::Matrix4d dlio::OdomNode::regularizateCov(const Eigen::Matrix4d &cov)
+{
+    Eigen::JacobiSVD<Eigen::Matrix3d> svd(cov.block<3, 3>(0, 0), Eigen::ComputeFullU | Eigen::ComputeFullV);
+    Eigen::Vector3d values(1, 1, 1e-3);
+
+    Eigen::Matrix4d cov_regularizated = Eigen::Matrix4d::Zero();
+    cov_regularizated.template block<3, 3>(0, 0) = svd.matrixU() * values.asDiagonal() * svd.matrixV().transpose();
+
+    return cov_regularizated;
+}
+
+bool dlio::OdomNode::isValidPoint(const Eigen::Matrix3d &cov, const int search_mode)
+{
+    if (cov.isZero())
+    {
+        return false;
+    }
+
+    if (search_mode == 0)
+    {
+        Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
+        if (solver.info() != Eigen::Success)
+        {
+            abort();
+        }
+
+        double x = solver.eigenvalues().x();
+        double y = solver.eigenvalues().y();
+        double z = solver.eigenvalues().z();
+
+        if ((z / x) < MIN_EIGENVALUE_RATIO_)
+        {
+            return false;
+        }
+    }
+
+    return true;
 }
