@@ -42,10 +42,15 @@ dlio:
       cropBoxFilter:
         size: 1.0
       voxelFilter:
-        res: 0.25
+        res: 0.1
+      feature:
+        cov_points_num: 10
+        min_dist_between_points: 0.7
+        min_neighbor: 0.2
+        min_eigen_ration: 10
 
     keyframe:
-      threshD: 1.0
+      threshD: 5.0
       threshR: 45.0
 
     submap:

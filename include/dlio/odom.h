@@ -148,6 +148,7 @@ private:
   pcl::PointCloud<PointType>::ConstPtr original_scan;
   pcl::PointCloud<PointType>::ConstPtr deskewed_scan;
   pcl::PointCloud<PointType>::ConstPtr current_scan;
+  pcl::PointCloud<PointType>::ConstPtr source_scan;
 
   // Keyframes
   pcl::PointCloud<PointType>::ConstPtr keyframe_cloud;
@@ -332,4 +333,36 @@ private:
   double geo_abias_max_;
   double geo_gbias_max_;
 
+
+
+	// preprocessor
+
+  void filter(const pcl::PointCloud<PointType>::ConstPtr &input_cloud,
+				pcl::PointCloud<PointType>::Ptr &output_cloud,
+                std::shared_ptr<nano_gicp::CovarianceList> &output_covs);
+
+   void calculateCovs(const pcl::PointCloud<PointType>::Ptr &input_cloud,
+                       std::shared_ptr<nano_gicp::CovarianceList> &output_covs,
+                       const int search_mode = 0);
+
+  Eigen::Matrix4d regularizateCov(const Eigen::Matrix4d &cov);
+
+  Eigen::Matrix4d calculateCov(const PointType &point, const int search_mode = 0);
+
+  void filterOnce(const pcl::PointCloud<PointType>::Ptr &input_cloud,
+                    pcl::PointCloud<PointType>::Ptr &output_cloud,
+                    const std::shared_ptr<nano_gicp::CovarianceList> &input_covs,
+                    std::shared_ptr<nano_gicp::CovarianceList> &output_covs,
+                    const int search_mode = 0);
+
+  bool isValidPoint(const Eigen::Matrix3d &cov, const int search_mode = 0);
+
+	nanoflann::KdTreeFLANN<PointType> kdtree_;
+	const double COV_POINTS_RADIUS_ = 0.5;
+  int cov_points_num_;
+  double min_dist_between_points_;
+  double min_eigenvalue_ration_;
+  double min_neighbor_;
+
+	std::shared_ptr<const nano_gicp::CovarianceList> source_covlist;
 };
