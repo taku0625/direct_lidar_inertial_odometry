@@ -80,6 +80,7 @@ dlio::OdomNode::OdomNode(ros::NodeHandle node_handle) : nh(node_handle)
 	this->source_scan = pcl::PointCloud<PointType>::ConstPtr(boost::make_shared<const pcl::PointCloud<PointType>>());
 	this->submap_cloud = pcl::PointCloud<PointType>::ConstPtr(boost::make_shared<const pcl::PointCloud<PointType>>());
 	this->source_covlist = std::make_shared<const nano_gicp::CovarianceList>();
+	this->local_map = pcl::PointCloud<PointType>::Ptr(boost::make_shared<pcl::PointCloud<PointType>>());
 
 	this->num_processed_keyframes = 0;
 
@@ -222,6 +223,11 @@ void dlio::OdomNode::getParams()
 	// Voxel Grid Filter
 	ros::param::param<bool>("~dlio/pointcloud/voxelize", this->vf_use_, true);
 	ros::param::param<double>("~dlio/odom/preprocessing/voxelFilter/res", this->vf_res_, 0.05);
+
+	ros::param::param<int>("~dlio/odom/preprocessing/feature/cov_points_num", this->cov_points_num_, 10);
+	ros::param::param<double>("~dlio/odom/preprocessing/feature/min_dist_between_points", this->min_dist_between_points_, 1.5);
+	ros::param::param<double>("~dlio/odom/preprocessing/feature/min_eigenvalue_ration", this->min_eigenvalue_ration_, 10);
+	ros::param::param<double>("~dlio/odom/preprocessing/feature/min_neighbor", this->min_neighbor_, 10);
 
 	// Adaptive Parameters
 	ros::param::param<bool>("~dlio/adaptive", this->adaptive_params_, true);
@@ -640,6 +646,8 @@ void dlio::OdomNode::preprocessPoints()
 	pcl::PointCloud<PointType>::Ptr source_scan_(boost::make_shared<pcl::PointCloud<PointType>>());
 	std::shared_ptr<nano_gicp::CovarianceList> source_covlist_(std::make_shared<nano_gicp::CovarianceList>());
 	this->filter(current_scan_, source_scan_, source_covlist_);
+	std::cout << "current_scan_ size: " << current_scan_->size() << std::endl;
+	std::cout << "source_scan_ size: " << source_scan_->size() << std::endl;
 
 	this->source_scan = source_scan_;
 	this->source_covlist = source_covlist_;
@@ -794,9 +802,9 @@ void dlio::OdomNode::initializeInputTarget()
 	this->keyframe_transformations.push_back(this->T_corr);
 }
 
-void dlio::OdomNode::setInputSource()
-{
+void dlio::OdomNode::setInputSource() {
 	if (this->keyframes.size() == 0)
+	// if (true)
 	{
 		this->gicp.setInputSource(this->current_scan);
 		this->gicp.calculateSourceCovariances();
@@ -888,19 +896,24 @@ void dlio::OdomNode::callbackPointCloud(const sensor_msgs::PointCloud2ConstPtr &
 		return;
 	}
 
+	if (this->iterative_num == 0)
+	{
+		this->final_iterate = true;
+	}
+
 	// Get the next pose via IMU + S2M + GEO
 	this->getNextPose();
 
 	// iterative dlio!
 	// this->initial_iterate = false;
-	for (int i = 0; i < this->iteratie_num; i++)
+	for (int i = 0; i < this->iterative_num; i++)
 	{
 		// Preprocess points
 		this->preprocessPoints();
 
 		// Set new frame as input source
 		this->setInputSource();
-		if (i == this->iteratie_num - 1)
+		if (i == this->iterative_num - 1)
 		{
 			this->final_iterate = true;
 		}
@@ -941,8 +954,10 @@ void dlio::OdomNode::callbackPointCloud(const sensor_msgs::PointCloud2ConstPtr &
 		published_cloud = this->current_scan;
 	}
 	else
-	{
-		published_cloud = this->deskewed_scan;
+	{    
+		// published_cloud = this->deskewed_scan;
+		// published_cloud = this->current_scan;
+		published_cloud = this->source_scan;
 	}
 	this->publish_thread = std::thread(&dlio::OdomNode::publishToROS, this, published_cloud, this->T_corr);
 	this->publish_thread.detach();
@@ -2292,8 +2307,8 @@ void dlio::OdomNode::filter(const pcl::PointCloud<PointType>::ConstPtr &input_cl
 
         if (input_filtered_cloud_1->size() == input_filtered_cloud_2->size())
         {
-            // filterOnce(input_filtered_cloud_2, input_filtered_cloud_1, covs_2, covs_1);
-            filterOnce(input_filtered_cloud_2, input_filtered_cloud_1, covs_2, covs_1, 1);
+            filterOnce(input_filtered_cloud_2, input_filtered_cloud_1, covs_2, covs_1);
+            // filterOnce(input_filtered_cloud_2, input_filtered_cloud_1, covs_2, covs_1, 1);
 
             output_cloud = input_filtered_cloud_1;
 
@@ -2311,8 +2326,8 @@ void dlio::OdomNode::filter(const pcl::PointCloud<PointType>::ConstPtr &input_cl
 
         if (input_filtered_cloud_1->size() == input_filtered_cloud_2->size())
         {
-            // filterOnce(input_filtered_cloud_1, input_filtered_cloud_2, covs_1, covs_2);
-            filterOnce(input_filtered_cloud_1, input_filtered_cloud_2, covs_1, covs_2, 1);
+            filterOnce(input_filtered_cloud_1, input_filtered_cloud_2, covs_1, covs_2);
+            // filterOnce(input_filtered_cloud_1, input_filtered_cloud_2, covs_1, covs_2, 1);
 
             output_cloud = input_filtered_cloud_2;
 
@@ -2348,7 +2363,7 @@ Eigen::Matrix4d dlio::OdomNode::calculateCov(const PointType &point, const int s
     std::vector<float> k_sq_distances;
     if (search_mode == 0)
     {
-        kdtree_.nearestKSearch(point, COV_POINTS_NUM_, k_indices, k_sq_distances);
+        kdtree_.nearestKSearch(point, cov_points_num_, k_indices, k_sq_distances);
     }
     else
     {
@@ -2357,7 +2372,7 @@ Eigen::Matrix4d dlio::OdomNode::calculateCov(const PointType &point, const int s
 
     int num_neighbors = k_indices.size();
 
-    if (num_neighbors < COV_POINTS_NUM_ || k_sq_distances.back() > MIN_DIST_BETWEEN_POINTS_ || k_sq_distances[1] > 0.2)
+    if (num_neighbors < cov_points_num_ || k_sq_distances.back() > min_dist_between_points_ || k_sq_distances[1] > min_neighbor_)
     {
         return Eigen::Matrix4d::Zero();
     }
@@ -2451,7 +2466,7 @@ bool dlio::OdomNode::isValidPoint(const Eigen::Matrix3d &cov, const int search_m
         double y = solver.eigenvalues().y();
         double z = solver.eigenvalues().z();
 
-        if ((z / x) < MIN_EIGENVALUE_RATIO_)
+        if ((z / x) < min_eigenvalue_ration_)
         {
             return false;
         }

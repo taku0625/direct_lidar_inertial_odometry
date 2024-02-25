@@ -361,42 +361,43 @@ private:
 	ImuBias iterative_dbias;
 	bool initial_iterate = false;
 	bool final_iterate = false;
-	int iteratie_num = 1;
+	int iterative_num = 0;
 	Eigen::Vector3f iterative_geo_prev_vel;
 
 	std::vector<double> timestamps;
 	std::vector<int> unique_time_indices;
 	pcl::PointCloud<PointType>::Ptr deskewed_scan_;
+	pcl::PointCloud<PointType>::Ptr local_map;
 
 
 	// preprocessor
 
-    void filter(const pcl::PointCloud<PointType>::ConstPtr &input_cloud,
+  	void filter(const pcl::PointCloud<PointType>::ConstPtr &input_cloud,
 				pcl::PointCloud<PointType>::Ptr &output_cloud,
                 std::shared_ptr<nano_gicp::CovarianceList> &output_covs);
 
-    void calculateCovs(const pcl::PointCloud<PointType>::Ptr &input_cloud,
+	void calculateCovs(const pcl::PointCloud<PointType>::Ptr &input_cloud,
                        std::shared_ptr<nano_gicp::CovarianceList> &output_covs,
                        const int search_mode = 0);
 
-    Eigen::Matrix4d regularizateCov(const Eigen::Matrix4d &cov);
+	Eigen::Matrix4d regularizateCov(const Eigen::Matrix4d &cov);
 
-    Eigen::Matrix4d calculateCov(const PointType &point, const int search_mode = 0);
+	Eigen::Matrix4d calculateCov(const PointType &point, const int search_mode = 0);
 
-    void filterOnce(const pcl::PointCloud<PointType>::Ptr &input_cloud,
-                    pcl::PointCloud<PointType>::Ptr &output_cloud,
-                    const std::shared_ptr<nano_gicp::CovarianceList> &input_covs,
-                    std::shared_ptr<nano_gicp::CovarianceList> &output_covs,
-                    const int search_mode = 0);
+	void filterOnce(const pcl::PointCloud<PointType>::Ptr &input_cloud,
+						pcl::PointCloud<PointType>::Ptr &output_cloud,
+						const std::shared_ptr<nano_gicp::CovarianceList> &input_covs,
+						std::shared_ptr<nano_gicp::CovarianceList> &output_covs,
+						const int search_mode = 0);
 
-    bool isValidPoint(const Eigen::Matrix3d &cov, const int search_mode = 0);
+	bool isValidPoint(const Eigen::Matrix3d &cov, const int search_mode = 0);
 
 	nanoflann::KdTreeFLANN<PointType> kdtree_;
-	const int COV_POINTS_NUM_ = 20;
 	const double COV_POINTS_RADIUS_ = 0.5;
-    const double CORR_DIST_THRESHOLD_ = 0.5;
-    const double MIN_DIST_BETWEEN_POINTS_ = 0.7;
-    const double MIN_EIGENVALUE_RATIO_ = 10.0;
+	int cov_points_num_;
+	double min_dist_between_points_;
+	double min_eigenvalue_ration_;
+	double min_neighbor_;
 
 	std::shared_ptr<const nano_gicp::CovarianceList> source_covlist;
 };
