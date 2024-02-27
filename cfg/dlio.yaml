@@ -21,7 +21,7 @@ dlio:
     voxelize: true
 
   imu:
-    calibration: false
+    calibration: true
     intrinsics:
       accel:
         bias: [ 0.0, 0.0, 0.0 ]
@@ -33,7 +33,7 @@ dlio:
 
   extrinsics:
     baselink2imu:
-      t: [ 0.095, 0.0, -0.090 ]
+      t: [ 0.0, 0.0, 0.05 ]
       # t: [ 0.006253, -0.011775, 0.007645 ]
       R: [ 1.,  0.,  0.,
            0.,  1.,  0.,

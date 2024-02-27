@@ -361,7 +361,7 @@ private:
 	ImuBias iterative_dbias;
 	bool initial_iterate = false;
 	bool final_iterate = false;
-	int iterative_num = 0;
+	int iterative_num = 1;
 	Eigen::Vector3f iterative_geo_prev_vel;
 
 	std::vector<double> timestamps;
@@ -373,6 +373,7 @@ private:
 	// preprocessor
 
   	void filter(const pcl::PointCloud<PointType>::ConstPtr &input_cloud,
+				const std::shared_ptr<const nano_gicp::CovarianceList> &input_covs,
 				pcl::PointCloud<PointType>::Ptr &output_cloud,
                 std::shared_ptr<nano_gicp::CovarianceList> &output_covs);
 

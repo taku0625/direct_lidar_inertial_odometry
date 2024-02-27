@@ -463,13 +463,13 @@ void dlio::OdomNode::publishToROS(pcl::PointCloud<PointType>::ConstPtr published
 void dlio::OdomNode::publishCloud(pcl::PointCloud<PointType>::ConstPtr published_cloud, Eigen::Matrix4f T_cloud)
 {
 
-	if (this->wait_until_move_)
-	{
-		if (this->length_traversed < 0.1)
-		{
-			return;
-		}
-	}
+	// if (this->wait_until_move_)
+	// {
+	// 	if (this->length_traversed < 0.1)
+	// 	{
+	// 		return;
+	// 	}
+	// }
 
 	pcl::PointCloud<PointType>::Ptr deskewed_scan_t_(boost::make_shared<pcl::PointCloud<PointType>>());
 
@@ -643,14 +643,22 @@ void dlio::OdomNode::preprocessPoints()
 	this->voxel.filter(*current_scan_);
 	this->current_scan = current_scan_;
 
-	pcl::PointCloud<PointType>::Ptr source_scan_(boost::make_shared<pcl::PointCloud<PointType>>());
-	std::shared_ptr<nano_gicp::CovarianceList> source_covlist_(std::make_shared<nano_gicp::CovarianceList>());
-	this->filter(current_scan_, source_scan_, source_covlist_);
-	std::cout << "current_scan_ size: " << current_scan_->size() << std::endl;
-	std::cout << "source_scan_ size: " << source_scan_->size() << std::endl;
+	if (this->final_iterate)
+	// if (true)
+	{
+		pcl::PointCloud<PointType>::Ptr source_scan_(boost::make_shared<pcl::PointCloud<PointType>>());
+		std::shared_ptr<const nano_gicp::CovarianceList> input_covlist_(std::make_shared<const nano_gicp::CovarianceList>());
+		std::shared_ptr<nano_gicp::CovarianceList> source_covlist_(std::make_shared<nano_gicp::CovarianceList>());
+		this->gicp.setInputSource(this->current_scan);
+		this->gicp.calculateSourceCovariances();
+		input_covlist_ = this->gicp.getSourceCovariances();
+		this->filter(current_scan_, input_covlist_, source_scan_, source_covlist_);
+		std::cout << "current_scan_ size: " << current_scan_->size() << std::endl;
+		std::cout << "source_scan_ size: " << source_scan_->size() << std::endl;
 
-	this->source_scan = source_scan_;
-	this->source_covlist = source_covlist_;
+		this->source_scan = source_scan_;
+		this->source_covlist = source_covlist_;
+	}
 }
 
 void dlio::OdomNode::deskewPointcloud()
@@ -803,7 +811,7 @@ void dlio::OdomNode::initializeInputTarget()
 }
 
 void dlio::OdomNode::setInputSource() {
-	if (this->keyframes.size() == 0)
+	if (this->keyframes.size() <= 3 || this->keyframes.size() >= 70 || this->source_scan->size() < 2000)
 	// if (true)
 	{
 		this->gicp.setInputSource(this->current_scan);
@@ -908,15 +916,14 @@ void dlio::OdomNode::callbackPointCloud(const sensor_msgs::PointCloud2ConstPtr &
 	// this->initial_iterate = false;
 	for (int i = 0; i < this->iterative_num; i++)
 	{
-		// Preprocess points
-		this->preprocessPoints();
-
-		// Set new frame as input source
-		this->setInputSource();
 		if (i == this->iterative_num - 1)
 		{
 			this->final_iterate = true;
 		}
+		// Preprocess points
+		this->preprocessPoints();
+		this->setInputSource();
+		// Set new frame as input source
 		this->getNextPose();
 	}
 	this->final_iterate = false;
@@ -2288,6 +2295,7 @@ void dlio::OdomNode::debug()
 
 
 void dlio::OdomNode::filter(const pcl::PointCloud<PointType>::ConstPtr &input_cloud,
+							const std::shared_ptr<const nano_gicp::CovarianceList> &input_covs,
 						  pcl::PointCloud<PointType>::Ptr &output_cloud,
                           std::shared_ptr<nano_gicp::CovarianceList> &output_covs)
 {
@@ -2297,7 +2305,7 @@ void dlio::OdomNode::filter(const pcl::PointCloud<PointType>::ConstPtr &input_cl
     auto covs_2 = std::make_shared<nano_gicp::CovarianceList>();
 
 	*input_filtered_cloud_1 = *input_cloud;
-    calculateCovs(input_filtered_cloud_1, covs_1);
+	*covs_1 = *input_covs;
 
     // filterOnce(input_filtered_cloud_1, output_cloud, covs_1, output_covs, 1);
 

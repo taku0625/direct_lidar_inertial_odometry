@@ -58,14 +58,14 @@ void dlio::MapNode::start()
 void dlio::MapNode::publishTimer(const ros::TimerEvent &e)
 {
 
-	if (this->dlio_map->points.size() == this->dlio_map->width * this->dlio_map->height)
-	{
-		sensor_msgs::PointCloud2 map_ros;
-		pcl::toROSMsg(*this->dlio_map, map_ros);
-		map_ros.header.stamp = ros::Time::now();
-		map_ros.header.frame_id = this->odom_frame;
-		this->map_pub.publish(map_ros);
-	}
+	// if (this->dlio_map->points.size() == this->dlio_map->width * this->dlio_map->height)
+	// {
+	// 	sensor_msgs::PointCloud2 map_ros;
+	// 	pcl::toROSMsg(*this->dlio_map, map_ros);
+	// 	map_ros.header.stamp = ros::Time::now();
+	// 	map_ros.header.frame_id = this->odom_frame;
+	// 	this->map_pub.publish(map_ros);
+	// }
 }
 
 void dlio::MapNode::callbackKeyframe(const sensor_msgs::PointCloud2ConstPtr &keyframe)
@@ -87,6 +87,12 @@ void dlio::MapNode::callbackKeyframe(const sensor_msgs::PointCloud2ConstPtr &key
 	auto output_cloud = pcl::make_shared<pcl::PointCloud<PointType>>();
 	this->filter(this->dlio_map, output_cloud);
 	this->dlio_map = output_cloud;
+
+    sensor_msgs::PointCloud2 map_ros;
+    pcl::toROSMsg(*this->dlio_map, map_ros);
+    map_ros.header.stamp = ros::Time::now();
+    map_ros.header.frame_id = this->odom_frame;
+    this->map_pub.publish(map_ros);
 }
 
 bool dlio::MapNode::savePcd(direct_lidar_inertial_odometry::save_pcd::Request &req,

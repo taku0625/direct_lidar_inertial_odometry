@@ -61,6 +61,8 @@
 
   </node>
 
+  <node pkg="tf2_ros" type="static_transform_publisher" name="velodyne_broadcaster" args="0 0 0 0 0 0 1 robot/lidar velodyne" />
+
   <!-- RViz -->
   <node pkg="rviz" type="rviz" name="dlio_rviz" args="-d $(find direct_lidar_inertial_odometry)/launch/dlio.rviz" if="$(arg rviz)"/>
 
