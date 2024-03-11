@@ -96,12 +96,14 @@ private:
   ros::Publisher kf_pose_pub;
   ros::Publisher kf_cloud_pub;
   ros::Publisher deskewed_pub;
+  ros::Publisher source_pub;
 
   // ROS Msgs
   nav_msgs::Odometry odom_ros;
   geometry_msgs::PoseStamped pose_ros;
   nav_msgs::Path path_ros;
-  geometry_msgs::PoseArray kf_pose_ros;
+  // geometry_msgs::PoseArray kf_pose_ros;
+  geometry_msgs::PoseStamped kf_pose_ros;
 
   // Flags
   std::atomic<bool> dlio_initialized;
@@ -333,11 +335,20 @@ private:
   double geo_abias_max_;
   double geo_gbias_max_;
 
+  bool final_iterate_ = false;
+  int iterate_num_ = 0;
+
+	Pose iterative_init_lidarPose;
+	State iterative_init_state;
+	ImuBias iterative_dbias;
+	Eigen::Vector3f iterative_geo_prev_vel;
+  std::vector<pcl::PointCloud<PointType>::Ptr> keyframe_clouds_;
 
 
 	// preprocessor
 
   void filter(const pcl::PointCloud<PointType>::ConstPtr &input_cloud,
+				const std::shared_ptr<const nano_gicp::CovarianceList> &input_covs,
 				pcl::PointCloud<PointType>::Ptr &output_cloud,
                 std::shared_ptr<nano_gicp::CovarianceList> &output_covs);
 
@@ -365,4 +376,8 @@ private:
   double min_neighbor_;
 
 	std::shared_ptr<const nano_gicp::CovarianceList> source_covlist;
+
+  double extraction_rate_ = 0.0;
+  int extraction_num_ = 0;
+  bool keyframe_detected_ = false;
 };

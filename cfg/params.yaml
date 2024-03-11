@@ -24,7 +24,14 @@ dlio:
       filtered: false
     sparse:
       frequency: 1.0
-      leafSize: 0.25
+      leafSize: 0.1
+    preprocessing:
+      feature:
+        cov_points_num: 20
+        min_dist_between_points: 0.7
+        min_neighbor: 0.2
+        min_eigen_ration: 10
+
 
   odom:
 
